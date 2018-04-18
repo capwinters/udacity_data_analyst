@@ -1,0 +1,23 @@
+code,connection,conn_generation
+0, Unknown,Unknown
+1, Cell,Cell
+2, Wi-Fi,Wi-Fi
+3, GPRS,2G
+4, EDGE,2G
+5, UMTS,3G
+6, CDMA,3G
+7, EVDO0,3G
+8, EVDOA,3G
+9, OnexRTT,3G
+10, HSDPA,3G
+11, HSPA,3G
+12, IDEN,3G
+13, EHRPD,3G
+14, EVDOB,3G
+15, LTE,4G
+16, HSUPA,3G
+17, HSPAP,3G
+18, GSM,3G
+19, TDSCDMA,3G
+20, IWLAN,Wi-Fi
+21, LTE-CA ,4G
