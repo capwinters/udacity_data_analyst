@@ -1,0 +1,865 @@
+European Soccer Strikers' Performance (EDA) 
+========================================================
+### by Erdem Koç
+
+ ![](image.jpg)
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+
+library(ggplot2)
+library(GGally)
+library(scales)
+library(memisc)
+library(gridExtra)
+library(dbplyr)
+library(magrittr)
+
+#install.packages('GGally', dependencies=TRUE, repos='http://cran.rstudio.com/')
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+data <- read.csv("StrikerPerformances.csv")
+```
+
+
+
+Data used in this EDA is from [here](https://www.kaggle.com/gimunu/football-striker-performance)
+
+
+
+# Univariate Plots Section
+
+A first look at the data shows that we have 13 columns and 7062 observations. 
+Some of these columns are numeric, some are categorical. A good example for 
+this project. Let's start exploring European Footballs Strikers!
+
+### Some summary information
+
+```{r echo=FALSE, Univariate_Plots}
+str(data)
+```
+
+```{r echo=FALSE, summary}
+summary(data)
+```
+
+### Distribution of nr. of goals scored by players
+
+Since goal is the ultimate "goal" of the game :), lets take a look at the 
+histograms.
+
+```{r echo=FALSE, goals}
+# binwidth = 1 because range is up to 60 and it is informative to be able 
+# to count goals 1 by 1
+
+ggplot(aes(x = goals), data = subset(data, !is.na(goals))) +
+  geom_histogram(binwidth = 1) 
+
+```
+```{r echo=FALSE, goals_summary}
+summary(data$goals)
+```
+
+There are 2 interesting points here: 
+
+1. it is likely that most of the strikers do not score a goal, hence we have 
+peaks at 0 goals
+
+2. Goals scored has a right skewed charactheristics
+
+### Distribution of nr. of assists made by players 
+
+```{r echo=FALSE, assists}
+#binwidth = 1 because range is up to 60 and it is informative to be able to 
+# count goals 1 by 1
+
+ggplot(aes(x = assists), data = subset(data, !is.na(assists))) +
+  geom_histogram(binwidth = 1) 
+
+```
+```{r echo=FALSE, assists_summary}
+
+summary(data$assists)
+
+```
+
+Distribution of assists are similar to goals, and the reasoning behind is more 
+or less the same. However let's keep in mind that generally number of assists 
+is 1/2 wrt goals. This is an expected result as assists mostly come from 
+midfielders not strikers. 
+
+### Distirbution of minutes played
+
+```{r echo=FALSE, minutes}
+#binwidth = 90 because we have high range and 90 is the duration of a game, 
+# so that we can also see average game #
+
+ggplot(aes(x = minutes), data = subset(data, !is.na(minutes))) +
+  geom_histogram(binwidth = 90) 
+
+```
+
+```{r echo=FALSE, min_summary}
+
+summary(data$minutes)
+
+```
+
+Note that there is a peak close to 0 minutes. This may be due to several 
+factors. Substitution, injuries, imperfection in data collection etc.
+
+### Distribution of nr. of games played by players
+
+```{r echo=FALSE, games}
+
+ggplot(aes(x = games), data = subset(data, !is.na(games))) +
+  geom_histogram(binwidth = 1) 
+
+```
+
+Distribution of games played is similar to the minutes, but the peak is a bit 
+to the right. This is because of the obviouds correlation btw minutes and games 
+played and the fact that whether a player plays 90 mins or 1 mins, games played 
+is incremented.
+
+### Structure of data from seasons
+
+```{r echo=FALSE, season_data}
+
+ggplot(data=subset(data, !is.na(games)), aes(x=season)) +
+    geom_bar(stat="count")
+
+```
+
+Obviously there is more data after the season 2013-14. This suggests that we 
+should look at the frequencies of games played, so that we can normalise the 
+effect coming from more data as the seasons come close to present day. 
+
+***Review note*: *** Note that total number of samples per each season is not 
+equal. To be able to compare the histograms I divide samples by total samples. 
+So that area under each curve is 1 and every X,Y value is comparable. 
+
+```{r echo=FALSE, games_freq}
+
+# put the data in a new dataset and combine the plots. we also normalise the 
+# y values so that we can talk about comparable distribuions of are 1 rather 
+# than histohrams.
+
+games.freq <- ggplot(aes(x = games, y = ..count../sum(..count..)),
+       data = subset(data, !is.na(games) & season != '2017-18')) +
+  geom_freqpoly(aes(color = season), binwidth=5, size=1)
+
+min.freq <- ggplot(aes(x = minutes, y = ..count../sum(..count..)),
+       data = subset(data, !is.na(minutes) & season != '2017-18')) +
+  geom_freqpoly(aes(color = season), binwidth=500, size=1)
+
+grid.arrange(games.freq, min.freq)
+
+```
+
+Note that, for seasons 2012-13 and 2013-14 number of zero minutes and games is 
+relatively high. We must keep this in mind while investigating a feature over 
+seasons.
+
+### Age and preferred foot 
+
+Below I provide some more univariate information just to keep in mind on the 
+following parts.
+
+```{r echo=FALSE, age}
+
+ggplot(data=subset(data, !is.na(age)), aes(x=age)) +
+     geom_histogram(binwidth = 1)
+
+```
+
+```{r echo=FALSE, age_summary}
+
+summary(data$age)
+               
+```
+
+Age histogram of players are as expected. They can become professional at the 
+age of 16 and tend to retire after they are 30 years old. 
+
+```{r echo=FALSE, foot}
+
+ggplot(data=subset(data, !is.na(foot) & foot != ''), aes(x=foot, y = ..count../sum(..count..))) +
+    geom_bar(stat="count")
+               
+```
+
+%70 of the player in data are right footed, %20 is left and %10 can use both 
+feet. 
+
+### Computed variables
+
+I beleive following variables are interesting to look at:
+
+1. Goals/minute 
+2. Goals/game
+3. Minutes/Game
+
+Lets add them to the dataset and plot histograms.
+
+```{r echo=FALSE, computed}
+
+# add computed columns to datasets
+
+data$goalsperminute <- with(data, goals/minutes)
+data$goalspergame <- with(data, goals/games)
+data$minutespergame <- with(data, minutes/games)
+
+```
+
+```{r echo=FALSE, goalspermin}
+
+# filtering 0 values as they are not useful for such a variable
+
+ggplot(data=subset(data, !is.na(goalsperminute) & goalsperminute !=0), 
+       aes(x=goalsperminute)) +
+     geom_histogram(binwidth = 0.0005)
+
+```
+```{r echo=FALSE, goalspermin_summary}
+
+summary(data$goalsperminute)
+
+```
+
+Note that we filter goalsperminute = 0 cases, as this histogram is more relevant
+"if" goal is scored and a peak at 0 makes it hard to see actual charactheristics 
+when one or more goal is scored.
+
+```{r echo=FALSE, goalspergame}
+
+ggplot(data=subset(data, !is.na(goalspergame) & goalspergame !=0 ), 
+       aes(x=goalspergame)) +
+     geom_histogram(binwidth = 0.01)
+
+```
+```{r echo=FALSE, goalspergame_summary}
+summary(data$goalspergame)
+```
+
+Note again that we filter no goal cases. It is also important to note that 
+max(goalpergame) = 2.0 does not mean that a player cannot score more than 2 
+goals per game. It is the ratio that players can reach given the goals they 
+scored and the games thay played that season.
+
+```{r echo=FALSE, minutespergame}
+
+ggplot(data=subset(data, !is.na(minutespergame)), aes(x=minutespergame)) +
+     geom_histogram(binwidth = 5)
+
+```
+```{r echo=FALSE, minutespergame_summary}
+
+summary(data$minutespergame)
+
+```
+
+This histogram is again as expected. It is obvious that a football game is 90 
+minutes and 120 minute is not an outlier. It is due to the fact that some games 
+can go to extra time. In fact we are looking at the leagues, not tournamets and 
+this should not normally occur, but I will keep this as it is, because there may 
+be a playy-off case or a similar game that takes 120 mins. Since it is very rare 
+it will not be very critical in ou conclusions. 
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+Data includes 7062 observations with 13 variables. 7 of these are factor 
+variables. I added 3 computed variables from other columns. 
+
+Factor variables: 
+
+ * current.club  : 193 levels
+ * current.league: 10 levels 
+ * foot          : 3 levels "both","left", "right
+ * name          : 1173 levels
+ * nationality   : 285 levels 
+ * position      : 2 levels "CF","W" 
+ * season        : 6 levels "2012-13","2013-14"..."2017-18"
+ 
+ Other observations:
+ 
+ * there was no need to ordered factors except for seasons. (alphabetical 
+ ordering was sufficient for all practical purposes)
+ 
+ * 2012-13 and 2013-14 seasons include a little bit more 0 minutes and games per
+ player. This may be due to data collection method and/or because the player 
+ get more experienced and become more regular starters, hence take more 
+ minutes/play in more games.
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The number of goals a player scores. 
+
+I would like to investigate if the time a player takes leads to higher goals. 
+Is there a correlation btw assists and goals a player makes. How the goal 
+performance of players is affected from other possible factors like league, 
+position etc.
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+I expect that to be related to the time a player takes on the pitch and maybe 
+position and in which league he plays. It is also interesting to see the affect 
+of age. It is possible that more experienced players reach higher goal rates. 
+
+### Did you create any new variables from existing variables in the dataset?
+
+I created the following variables and added them to the dataframe:
+
+1. Goals/minute 
+2. Goals/game
+3. Minutes/Game
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+The original data was wide, as the goals/assists/minutes/games were given as 
+seperate columns for each season. I did a union like (of SQL) operation to 
+append these and added a year column to make it easier to plot histograms 
+across all seasons. 
+
+It was also not logical to look at goals/minute and goals/game when there is no 
+goal scored. This was leading to very high peaks at 0 on histograms and making 
+it hard to observe the distirbution characteristics of these varibles. So, 
+while plotting the histograms of calculated variables I filtered the case where 
+there is no goal. 
+
+I also observed that amount of NaNs in calculated columns increased as it is 
+possible to have 0 minutes/games and this was leading to NaN. My histogram code 
+is already filering this by "!is.na(my_variable)" so it was OK as it is. 
+
+# Bivariate Plots Section
+
+Below is a scatter matrix via ggpairs() function to give us a general look.
+
+***Review Note:*** I agree that values are mixed here, but merely a corelation 
+plot would not be sufficent here, because it helped me to see box plots of 
+categorical variables like position.I am using this plot as a very rough
+start point. 
+
+```{r echo=FALSE, warning = FALSE, Bivariate_Plots}
+
+ggpairs(data, columns=c("goals", "assists", "minutes", "games", "age", 
+                        "position", "goalspergame", "goalsperminute"),
+        lower=list(combo=wrap("facethist", binwidth=1)))
+
+```
+
+```{r echo=FALSE, warning = FALSE, goals_vs_minutes}
+
+# simple scatter and 2 curve fits of different methods
+
+ggplot(aes(x = minutes, y = goals), data = data) +
+  geom_jitter(alpha=0.1) + 
+  geom_smooth(method="auto")+
+   geom_smooth(method="lm", color="red")+
+   geom_vline(xintercept=3250)
+
+
+```
+
+As expected, as the time that a player takes on pitch increases, total goals he 
+scored increases. 
+
+Note also that, relationship is more of exponential especially after 3250 
+minutes (blue) on the pitch. Although variance increases at this region, 
+this non-linear increase is not a coincidence. This is because more skilled 
+players play almost every game. That is, they get more game time and they are 
+better at scoring. These are the affects that create exponential relationship 
+as we go beyond 3000 minutes. 
+
+```{r echo=FALSE, warning = FALSE, goals_vs_games}
+
+ggplot(aes(x = games, y = goals), data = data) +
+  geom_jitter(alpha=0.1) + 
+   geom_vline(xintercept=10, color="red")
+
+```
+
+This plot is also interesting. Note that, there is almost a horizonral line 
+until 10 games. So it can be observed that, if a player plays in more than 10 
+games in a season, his goal scoring performance will be better (very roughly 
+linearly proportional to the nr of games he plays). This may be due to the fact 
+that, players who play less than 10 games per season are usually substitutes 
+and/or less talented players. 
+
+
+```{r echo=FALSE, warning = FALSE, goals_vs_age}
+
+# adding a mean line to see how the average changes wrt age
+
+ggplot(aes(x=age, y = goals), data = subset(data, !is.na(goals) & goals !=0)) +
+  geom_jitter(alpha=0.1) + geom_line(stat='summary', fun.y=mean, color="red")
+                                    
+
+```
+
+Here we observed that as the player get more experienced total goals per season 
+increases, but data becomes more noisy for ages < 20 and > 30 due to the 
+decrease of samples. i.e. less footballers of these ages. 
+
+```{r echo=FALSE, warning = FALSE, age_vs_minutes}
+
+ggplot(aes(x = age, y = games), data = data) +
+  geom_jitter(alpha=0.1) 
+
+```
+
+This suggests that, there is not much relation between the age of a player and 
+the minutes he play per season. I would expect a little bit more correlation 
+here, which was interesting to see that there is not. 
+
+```{r echo=FALSE, warning = FALSE, position_goals_box}
+
+ggplot(data, aes(x = position, y = goals)) +
+        geom_boxplot()
+
+```
+
+This suggests that central forwars (CF) can on avarge score more goals per 
+season wrt wingers. This is again an expected result. What about the assists 
+they make? 
+
+```{r echo=FALSE, warning = FALSE, position_assits_box}
+
+ggplot(data, aes(x = position, y = assists)) +
+        geom_boxplot()
+
+```
+
+And here it is. Wingers tend to make more assists compated to center forwards. 
+This is again expected as they play on sides of the pitch and usually cross in 
+appropriate situations so that CFs can score. CFs however tend to directly 
+search for goal and unless the team is playing with 2 forwards their assist 
+options will be less. 
+
+
+```{r echo=FALSE, warning = FALSE, league_goals}
+
+ggplot(data, aes(x = current.league, y = goals)) +
+        geom_boxplot()
+
+```
+
+Now at first sight... there is not much to see here. But if we focus on 
+***outliers*** La Liga has higher outliers. If you are a football fan, you may 
+have already started to think about Lionel Messi and Chirstiano Ronaldo. 
+Let's see who are these la liga guys?
+
+
+```{r echo=FALSE, warning = FALSE, list_goals}
+
+la_liga_top_scorers = subset(data, goals > 50, c("name","goals","season"))
+la_liga_top_scorers[order(-la_liga_top_scorers[,"goals"]),]
+
+```
+
+And you were right! Only with the exception of Luis Suarez in season 2015-16 
+where he also scored 59 goals. 
+
+### Most efficient Leagues, Players and Clubs
+
+It is also interesting to look at the efficieny of goal scoring. We define 
+efficiency by mean value of goals per minute by league/club/player. i.e. how 
+many goals per minute a player/club/league scores. 
+
+It is important to point out that I preferred to take only 2017-18 season for 
+these computations. This is because, we have the "current team" column due to 
+the fact that some players change teams every season. Structure of data is not 
+appropriate to group over seasons for such computations. 
+
+Below are some interesting stats.
+
+```{r echo=FALSE, warning = FALSE, league_goalspermin}
+
+# creating a new dataset via grouping over league from latest season only
+# 90* is for better intiutive analysis. We can roughly talk about x.x goals 
+# per game 
+
+data.by_league <- subset(data, season == '2017-18') %>%
+  dplyr::group_by(current.league) %>%
+  dplyr::summarize(Mean = 90*mean(goalsperminute, na.rm=TRUE),
+            n=n()) %>%
+  dplyr::arrange(-Mean)
+
+data.by_league
+
+```
+
+The most surprising thing here was to see that Turkish Süper League is the place
+where the most efficient strikers play! This season, there occurs 0.37 goals for
+every 90 minutes of football played in the league. (Note: I multiplied 
+goalsperminute*90 so that we can talk about goals per game which is more 
+intiutive. But, this should not be confused by our actual "goalspergame"" 
+column) 
+
+```{r echo=FALSE, warning = FALSE}
+
+# creating a new dataset via grouping over league from latest season only
+# 90* is for better intiutive analysis. We can roughly talk about x.x goals 
+# per game 
+
+data.by_player <- subset(data, season == '2017-18') %>%
+  dplyr::group_by(name, current.club) %>%
+  dplyr::summarize(goals_per_minute = 90*mean(goalsperminute, na.rm=TRUE),
+                   total_minutes = sum(minutes, na.rm = TRUE)) %>%
+  dplyr::arrange(-goals_per_minute)
+  
+# taking only top players cos we have a lot and also a layer must have played 
+# at least 900 minutes. 
+# ie. effective 10 games at least. 
+
+head(subset(data.by_player, total_minutes > 900))
+
+```
+
+Here it is interesting to see the top 3. (Note: I filtered the results by taking
+players who played at least 900 minutes this season. ie. 10 effective game time)
+
+```{r echo=FALSE, warning = FALSE}
+
+# creating a new dataset via grouping over league from latest season only
+# 90* is for better intiutive analysis. We can roughly talk about x.x goals per 
+# game 
+
+data.by_team <- subset(data, season == '2017-18') %>%
+  dplyr::group_by(current.club, current.league) %>%
+  dplyr::summarize(Mean = 90*mean(goalsperminute, na.rm=TRUE),
+                   total_minutes = sum(minutes, na.rm = TRUE),
+            n=n()) %>%
+  dplyr::arrange(-Mean)
+  
+# here we ignore teams with only one striker in the data and teams with strikers
+# who played very short time in total (which is not very likely anyways)
+
+head(subset(data.by_team, total_minutes > 1000 & n > 2))
+
+```
+
+Here we see there is not a direct bias from league, club or player in terms of 
+effectiveness. Since number of teams, players change in each grouping we see 
+different 
+
+# Bivariate Analysis
+
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+Our primary feature of interest was the total number of goals scored by 
+strikers. We observed that there is a roughly linear relationship with minutes 
+played per season and goals scored. We also observed that this relationship 
+becomes exponential as the minutes exceed 3250 minutes (35 games). This is 
+because, players who play more than this much of games are exceptionally good 
+players with high consistency. 
+
+Another strong relation that effected the total number of goals scored per 
+season was the position. In this data there is ony two positions were given: 
+CF, W. I observed that CF has higher mean wrt W.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+Yes. I observed that wingers (W) tend to make more assits per season wrt 
+forwards (CF).
+
+I also oberved that the following relationships: 
+
+ * La Liga Strikers Lionell Messi and C. Ronaldo are the reason of the outliers 
+ of total goals per season which are higher than other leagues.
+ * In terms of goal scoring efficiency (goalsperminute) the top league of season
+ 2017-18 is ***Serie-A***
+ * In terms of goal scoring efficiency (goalsperminute) the top player of season
+ 2017-18 is ***Bafetimbi Gomis***
+ * In terms of goal scoring efficiency (goalsperminute) the top club of season 
+ 2017-18 is UC ***Sampdoria***
+
+### What was the strongest relationship you found?
+
+The number of goals per season is highly correlated with position and total 
+minutes on pitch. 
+
+
+# Multivariate Plots Section
+
+### Relationship of goals, minutes/games and position
+
+```{r echo=FALSE, warning = FALSE, Multivariate_Plots}
+
+ggplot(aes(x = minutes, y = goals, colour = position), data = data) +
+  geom_point(alpha=0.2)
+
+```
+
+
+
+Note how CFs paint the upper part of the histogram. It is very obvious that 
+their goal efficiency is higher. 
+
+
+```{r echo=FALSE, warning = FALSE, Multivariate_Plotsfacet}
+
+ggplot(aes(x = minutes, y = goals, colour = position), data = data) +
+  geom_point(alpha=0.2) + facet_wrap(~current.league, ncol=5) 
+
+```
+
+When we break it to leagues, we see more or less same behaviour. No league 
+stands out visually.
+
+```{r echo=FALSE, warning = FALSE}
+
+ggplot(aes(x = minutes, y = goals, colour = position), data = data) +
+  geom_point(alpha=0.2) + facet_wrap(~season, ncol=3) 
+
+```
+
+When we brea it int seasons again nothing stands out visually, except 2017-18 
+season. This is normal as it is not finished yet.
+
+```{r echo=FALSE, warning = FALSE, Multivariate_Plots_games}
+
+ggplot(aes(x = games, y = goals, colour = position), data = data) +
+  geom_point(alpha=0.5)
+
+```
+
+The seperaiton of positions is even more clear when we look at games played vs 
+goals scored.
+
+```{r echo=FALSE, warning = FALSE}
+
+ggplot(aes(x = games, y = goals, colour = position), data = data) +
+  geom_point(alpha=0.2) + facet_wrap(~current.league, ncol=5) 
+
+```
+
+Breking into leagues does not reveal a lot again. Russian Premier Liga and Greek 
+Super League are a bit behind others in terms of maximum golas scored. They 
+obivously have less efficient strikers.
+
+### Relationship of assists, minutes/games and position
+
+Now, let's look at the assits the same way we did for goals:
+
+The most important observation is that, assists are less seperated wrt position. 
+
+
+```{r echo=FALSE, warning = FALSE, Multivariate_Plots_assists}
+
+ggplot(aes(x = minutes, y = assists, colour = position), data = data) +
+  geom_point(alpha=0.2) 
+
+```
+```{r echo=FALSE, warning = FALSE}
+
+ggplot(aes(x = games, y = assists, colour = position), data = data) +
+  geom_point(alpha=0.2) 
+
+```
+```{r echo=FALSE, warning = FALSE}
+
+ggplot(aes(x = games, y = assists, colour = position), data = data) +
+  geom_point(alpha=0.2) + facet_wrap(~current.league, ncol=5)
+
+```
+
+Serie A is a bit different here. I will add more detailed explanation of this 
+in reflection part. 
+
+```{r echo=FALSE, warning = FALSE}
+
+ggplot(aes(x = games, y = goals, colour = age), data = data) +
+  geom_jitter(alpha=0.2)
+
+```
+
+Age does not seem to be correlated in any visible sense with goals scored. 
+
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+The most interesting strengthening feature was the position. It was clearly 
+observed that central forwards (CF) are more involved in goals scored wrt 
+wingers (W).
+
+### Were there any interesting or surprising interactions between features?
+
+Effect of position in assists made was a bit in favor of wingers as expected, 
+but the differentiation was not as clear as the effect of position on goals 
+scored.
+
+Also it was an iteresting observation to see that in Serie A (Italy) center 
+forwards are much less involved in assists wrt other leagues of Europe. 
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+N/A
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, warning=FALSE, goals_final}
+
+# same code with some cosmetic additions
+
+goal_stats=subset(data, !is.na(goals))
+ggplot(aes(x = goals), data = subset(data, !is.na(goals))) +
+  geom_histogram(binwidth = 1) + 
+   geom_vline(xintercept=mean(goal_stats$goals), color="red") + 
+    geom_vline(xintercept=median(goal_stats$goals), color="blue") + 
+      geom_text(data=goal_stats, aes(x=mean(goal_stats$goals)+3, y=600, 
+                                     label="mean"), size=4, parse=T, 
+                color = "red")+
+        geom_text(data=goal_stats, aes(x=median(goal_stats$goals)+3, y=500, 
+                                       label="median"), size=4, parse=T, 
+                  color = "blue") +
+     ggtitle("Histogram of total goals scored per season in European Football 
+Leagues \n 
+(seasons 2013/14 to 2017/18) ") +
+      ylab("Count of goals") + xlab("Goals per season") + 
+  scale_x_continuous(breaks = seq(0, 61, 2), limits = c(0, 61)) 
+
+```
+
+### Description One
+
+Our main feature of exploration was the amount of goals scored per season. This 
+histogram shows the most general charactheristics of strikers' goal performance 
+in football game. For European leagues (and I would strongly expect other 
+continents be very similar) we found out that a striker scores on avarage 6.7 
+goals per season. Considering 3rd quantile is 9 goals, we can assume a striker 
+is a decent one if he scores > 9 goals per season. 
+
+### Plot Two
+```{r echo=FALSE, warning = FALSE}
+
+# same code with some cosmetic additions
+
+ggplot(aes(x = minutes, y = goals), data = data) +
+  geom_jitter(alpha=0.1) + 
+  geom_smooth(method="loess")+
+   geom_smooth(method="lm", color="red")+
+   ggtitle("Total goals scored by a player in a season vs total minutes he 
+played \n 
+(seasons 2013/14 to 2017/18) ") +
+      ylab("Total goals") + xlab("minutes on pitch") + 
+        geom_text(data=goal_stats, aes(x=4500, y=10, label="linear_fit"), 
+                  size=4, parse=T, color = "red")+
+        geom_text(data=goal_stats, aes(x=4000, y=40, label="loess_fit"), 
+                  size=4, parse=T, color = "blue") 
+ 
+```
+
+### Description Two
+
+With the information provided in dataset, it turned out that a strong feature 
+to affect total goals per season was the total minutes a player stayed on the 
+pitch. Above scatter plot shows that until 3000 minutes of game time strikers 
+total goals per season is linearlt proportional to the minutes taken. 
+
+However, a better fit reveals another interesting finding beyond 3000 minutes 
+(approx. 30 games). Goal scoring performance of players who play more than 30 
+games per season is increasing exponentially. As I stated above, this is an 
+interesting finging for me, but nonethless explainable. Because, very rare and 
+skilled players play that much games per season and not only the minutes they 
+take, but also their exceptional skills become more distinguishable. 
+
+
+### Plot Three
+```{r echo=FALSE, warning = FALSE}
+
+ggplot(aes(x = minutes, y = goals, colour = position), data = data) +
+  geom_point(alpha=0.2) + 
+   ggtitle("Total goals scored by CF & W positions in a season vs total mins 
+played\n 
+(seasons 2013/14 to 2017/18) ") +
+      ylab("Total goals") + xlab("minutes on pitch") 
+
+```
+
+### Description Three
+
+After the hint given in scatter matrix, it was obvious that position was very 
+relevant in the amonut of total goals scored per season. Therefore, it was 
+necessary to further investigate the scatter plot of goals per minute wrt 
+position. Color coding wrt position revealed even more interesting and 
+clarifying results. We saw that center forwards contribute to the upper part of 
+the scatter plot with clear difference. 
+
+------
+
+# Reflection
+
+As a football fan and enthusiastic data scientist "candidate", it was very 
+entertaining and educative to go through this EDA. While doing my own data set 
+search, I encountered this dataset; that was a good choice in terms of structure 
+but still needed to be a little bit modified in order to be able to work 
+smoothly with R studio. Thanks to previous python (pandas) skills we learned, 
+it was easy to shape data to be explored. 
+
+I really did not know what to expect from this data. I was not even sure how 
+correct it was collected. The first dissapointing thing was that, Bundesliga 
+(German League) was not involved. I guess their statistics are subject to 
+copyrigt etc. Second suspicion I still have is the relative high amount of 0 
+goals and assists for the oldest seasons. I preferred to either filter these 
+values or did use the most recent season depending on the content of analysis. 
+
+Other than that every step was either jaw dropping (at least for me :) )  or a 
+mathematical confirmation of the intiutive expectation of an 36 year old 
+football fan as myself. Follwing are my highlights:
+
+ * 10 goals per season is really a decent amount and this was what I exactly 
+ found out!
+ 
+ * To see Messi and Ronaldo as an outlier in a boxplot was again a confirmation 
+ of how exceptional these players are
+ 
+ * It was really really interesting to find out that our good old and not very 
+ popular Turkish League was in fact the league where the most efficient stirkers
+ played. 
+ 
+ * To find out the afffect of position in multivariate analysis was somewhat 
+ expected, but never the less beatiful to see.
+ 
+ * And about the title picture of this EDA. The picture belongs to Bafetimbi 
+ Gomis, center forward of Galatasaray who turned out to be the most efficient 
+ striker in Europe according to the goals per minute analysis I did. 
+ 
+ * Final highlight was somewhat technical and probably too much detail for a 
+ decent footbal fan (an I apologize from the evaluator of this EDA for my 
+ tactical passion), but after so many hours of coding and data exploration I 
+ have to point out that, it was also interesting to see how Serie A forwards 
+ were much behind other leagues in terms of assists. The unique and traditional 
+ charactheristics of italian football have long been reluctant to adapt to the 
+ modern tactics and this is to be seen not only their absence at the top of 
+ European football wrt 90s, but also to the very detail of may facet_wrap wrt 
+ current.league scatter diagram. Data speaks for it self and we would not be 
+ wrong if we deduce that, in the era of hard working and physically top level 
+ central forwards, Italy still has "poachers" whose sole aim is to be at the 
+ right place, at the right time.
+ 
+I think to include only wingers and central forward lacks a bit of completeness.
+It could be logical to include attacking midfileders too, but then I think it 
+would be harder to see such a nice scatter graph when we colored wrt position. 
+For future analysis, it may be interesting to look at assists vs goals and 
+define a more elaborate metric of a so called " complete" striker whose 
+contirbution to his team is event more than just scoring goals. 
+
